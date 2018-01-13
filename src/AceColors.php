@@ -61,6 +61,7 @@ class AceColors
     const ERROR_HSLA_FORMAT     = 1031;
     const ERROR_RGB_STR_FORMAT  = 1040;
     const ERROR_RGBA_STR_FORMAT = 1041;
+    const ERROR_NO_PROPERTY     = 2001;
 
     private $_hex;
     private $_hsl;
@@ -694,6 +695,8 @@ class AceColors
      */
 
     /**
+     * Make new color object with the same color
+     *
      * @return $this
      */
     public function cloneColor()
@@ -703,25 +706,36 @@ class AceColors
         return $color;
     }
 
+    /**
+     * Make new color object with inverted color
+     *
+     * @return $this
+     */
     public function makeInverted()
     {
-        $color = $this->cloneColor()->invert();
-
-        return new static($this->invert());
+        return $this->cloneColor()->invert();
     }
 
+    /**
+     * Make new color object with complementary color
+     *
+     * @return string
+     */
     public function makeComplimentary()
     {
         $color = $this->cloneColor();
 
-        return $color->complementary();
+        return $this->cloneColor()->complementary();
     }
 
-    public function makeDark($amount = self::DEFAULT_ADJUST)
+    /**
+     * Make new color object with darker color
+     *
+     * @return string
+     */
+    public function makeDarker($amount = self::DEFAULT_ADJUST)
     {
-        $color = $this->cloneColor();
-
-        return $color->darken($amount);
+        return $this->cloneColor()->darken($amount);
     }
 
     /**
@@ -729,11 +743,9 @@ class AceColors
      *
      * @return string
      */
-    public function makeLight($amount = self::DEFAULT_ADJUST)
+    public function makeLighter($amount = self::DEFAULT_ADJUST)
     {
-        $color = $this->cloneColor();
-
-        return $color->lighten($amount);
+        return $this->cloneColor()->lighten($amount);
     }
 
     /* ***************************************
@@ -820,9 +832,10 @@ class AceColors
     public function lighten($amount = self::DEFAULT_ADJUST)
     {
         // Lighten
-        $lighterHSL = $this->_lighten($this->_hsl, $amount);
+        $lighterHSL = $this->_lighten($this->getHsl(), $amount);
+        $lighterHSL['a'] = $this->alpha;
 
-        return self::hslToHex($lighterHSL);
+        return $this->setHsl($lighterHSL);
     }
 
     /**
@@ -836,9 +849,10 @@ class AceColors
     public function darken($amount = self::DEFAULT_ADJUST)
     {
         // Darken
-        $darkerHSL = $this->_darken($this->_hsl, $amount);
-        // Return as HEX
-        return self::hslToHex($darkerHSL);
+        $darkerHSL = $this->_darken($this->getHsl(), $amount);
+        $darkerHSL['a'] = $this->alpha;
+
+        return $this->setHsl($darkerHSL);
     }
 
     /**
@@ -850,39 +864,50 @@ class AceColors
     public function complementary()
     {
         // Get our HSL
-        $hsl = $this->_hsl;
+        $hsla = $this->_hsl;
 
         // Adjust Hue 180 degrees
-        $hsl['h'] += ($hsl['h'] > 180) ? -180 : 180;
+        $hsla['h'] += ($hsla['h'] > 180) ? -180 : 180;
+        $hsla['a'] = $this->alpha;
 
-        // Return the new value in HEX
-        return self::hslToHex($hsl);
-    }
-
-    public function invert()
-    {
-        $rgba = $this->_rgba;
-        $r = 255 - $rgba['r'];
-        $g = 255 - $rgba['g'];
-        $b = 255 - $rgba['b'];
-
-        return self::rgbToHex([$r, $g, $b]);
+        return $this->setHsl($hsla);
     }
 
     /**
-     * Given a HEX value, returns a mixed color. If no desired amount provided, then the color mixed by this ratio
+     * @return $this
+     */
+    public function invert()
+    {
+        $rgb = $this->_rgb;
+        $rgba = [
+            'r' => 255 - $rgb['r'],
+            'g' => 255 - $rgb['g'],
+            'b' => 255 - $rgb['b'],
+            'a' => $this->alpha,
+        ];
+
+        $this->_setRgbaColor($rgba);
+
+        return $this;
+    }
+
+    /**
+     * Given an additional color, returns a mixed color. If no desired amount provided, then the color mixed by this ratio
      *
-     * @param string $hex2 Secondary HEX value to mix with
+     * @param mixed $color2 Secondary color to mix with
      * @param int $amount = -100..0..+100
      *
      * @return string mixed HEX value
      */
-    public function mix($hex2, $amount = 0)
+    public function mix($color2, $amount = 0)
     {
-        $rgb2 = self::hexToRgb($hex2);
-        $mixed = $this->_mix($this->_rgba, $rgb2, $amount);
-        // Return as HEX
-        return self::rgbToHex($mixed);
+        $newColor = new static($color2);
+        $mixed = $this->_mix($this->getRgb(), $newColor->getRgb(), $amount);
+        $mixed['a'] = $this->alpha;
+
+        $this->_setRgbaColor($mixed);
+
+        return $this;
     }
 
     /**
@@ -1298,16 +1323,16 @@ class AceColors
                 return $this->__toString();
             case 'red':
             case 'r':
-                return $this->_rgba['r'];
+                return $this->_rgb['r'];
             case 'green':
             case 'g':
-                return $this->_rgba['g'];
+                return $this->_rgb['g'];
             case 'blue':
             case 'b':
-                return $this->_rgba['b'];
+                return $this->_rgb['b'];
             case 'alpha':
             case 'a':
-                return $this->_rgba['a'];
+                return $this->_alpha;
             case 'hue':
             case 'h':
                 return $this->_hsl['h'];
@@ -1320,6 +1345,8 @@ class AceColors
             case 'luma':
             case 'luminance':
                 return $this->luma();
+            default:
+                static::_error(self::ERROR_NO_PROPERTY);
         }
         return null;
     }
@@ -1363,17 +1390,19 @@ class AceColors
                 break;
             case 'saturation':
             case 's':
-                $this->_hsl['s'] = self::_checkValue($value, 1);
-                $this->_rgba = static::hslToRgb($this->_hsl);
-                $this->_hex = static::rgbToHex($this->_rgba);
+                $hsl = $this->getHsla();
+                $hsl['s'] = self::_checkValue($value, 1);
+                $this->_setRgbaColor(static::hslToRgba($hsl));
                 break;
             case 'lightness':
             case 'light':
             case 'l':
-                $this->_hsl['l'] = self::_checkValue($value, 1);
-                $this->_rgba = static::hslToRgb($this->_hsl);
-                $this->_hex = static::rgbToHex($this->_rgba);
+                $hsl = $this->getHsla();
+                $hsl['l'] = self::_checkValue($value, 1);
+                $this->_setRgbaColor(static::hslToRgba($hsl));
                 break;
+            default:
+                static::_error(self::ERROR_NO_PROPERTY);
         }
     }
 
