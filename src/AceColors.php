@@ -85,24 +85,28 @@ class AceColors
     public function __construct($input = null)
     {
         self::_setErrors();
+        $color = null;
         if (null === $input) {
             $color = ['r' => 255, 'g' => 255, 'b' => 255, 'a' => 1.0];
             $this->setRgb($color);
-        } elseif (is_string($input) || is_array($input)) {
+        } elseif (is_string($input)) {
             if ($color = self::_checkHex($input, true)) {
                 $this->setRgb($color);
             } elseif ($color = self::_checkRgbStr($input, true)) {
                 $this->setRgb($color);
             } elseif ($color = self::_checkHslStr($input, true)) {
                 $this->setHsl($color);
-            } elseif ($color = self::_checkRgb($input, true)) {
+            }
+        } elseif (is_array($input)) {
+            if ($color = self::_checkRgb($input, true)) {
                 $this->setRgb($color);
             } elseif ($color = self::_checkHsl($input, true)) {
                 $this->setHsl($color);
             } else {
                 static::_error(self::ERROR_COLOR_FORMAT);
             }
-        } else {
+        }
+        if (empty($color)) {
             static::_error(self::ERROR_COLOR_FORMAT);
         }
     }
@@ -198,9 +202,9 @@ class AceColors
         $hsl = self::_checkHsl($hsl);
         if ($hsl) {
             if (isset($hsl['a'])) {
-                $this->_setRgbaColor(static::hslaToRgba($hsl));
+                $this->_setRgbaColor(static::hslaToRgba($hsl), $hsl);
             } else {
-                $this->_setRgbaColor(static::hslToRgb($hsl));
+                $this->_setRgbaColor(static::hslToRgb($hsl), $hsl);
             }
         }
         return $this;
@@ -383,7 +387,7 @@ class AceColors
      */
     public function getHsla()
     {
-        $hsla = $this->getRgb();
+        $hsla = $this->getHsl();
         $hsla['a'] = (null === $this->_alpha) ? 1.0 : $this->_alpha;
 
         return $hsla;
@@ -396,7 +400,7 @@ class AceColors
      */
     public function getHslStr()
     {
-        return static::hslToStr($this->_hsl);
+        return static::hslToStr($this->getHsl());
     }
 
     /**
@@ -406,7 +410,7 @@ class AceColors
      */
     public function getHslaStr()
     {
-        return static::hslaToStr($this->_hsl);
+        return static::hslaToStr($this->getHsla());
     }
 
 
@@ -463,7 +467,7 @@ class AceColors
             return $hr . $hg . $hb;
         }
         $a = 255 * $color['a'];
-        return $hr . $hg . $hb . (($color['a'] < 16) ? '0' . dechex($a) : dechex($a));
+        return $hr . $hg . $hb . (($a < 16) ? '0' . dechex($a) : dechex($a));
     }
 
     /**
@@ -475,7 +479,7 @@ class AceColors
      */
     public static function rgbaToHex($rgba)
     {
-        return static::rgbToHex($rgba, true);
+        return static::rgbToHex($rgba, false);
     }
 
     /**
@@ -563,8 +567,12 @@ class AceColors
                 $H = (2 / 3) + $delG - $delR;
             }
 
-            if ($H < 0) $H++;
-            if ($H > 1) $H--;
+            if ($H < 0) {
+                $H++;
+            }
+            if ($H > 1) {
+                $H--;
+            }
         }
 
         $HSL['h'] = ($H * 360);
@@ -659,6 +667,18 @@ class AceColors
     public static function hslaToHex($hsla)
     {
         return static::rgbToHex(static::hslToRgb($hsla));
+    }
+
+    /**
+     *  Given a HSL associative array returns the equivalent HEX string
+     *
+     * @param array $hsla
+     *
+     * @return string HEX string RRGGBBAA
+     */
+    public static function hslaToHexa($hsla)
+    {
+        return static::rgbaToHexa(static::hslaToRgba($hsla));
     }
 
     /**
@@ -827,7 +847,7 @@ class AceColors
      *
      * @param int $amount
      *
-     * @return string Lighter HEX value
+     * @return $this
      */
     public function lighten($amount = self::DEFAULT_ADJUST)
     {
@@ -844,7 +864,7 @@ class AceColors
      *
      * @param int $amount
      *
-     * @return string Darker HEX value
+     * @return $this
      */
     public function darken($amount = self::DEFAULT_ADJUST)
     {
@@ -858,7 +878,7 @@ class AceColors
     /**
      * Returns the complimentary color
      *
-     * @return string Complementary hex color
+     * @return $this
      *
      */
     public function complementary()
@@ -1082,13 +1102,21 @@ class AceColors
     /**
      * Assign current color
      *
-     * @param $rgba
+     * @param array $rgba
+     * @param array $hsl
      */
-    private function _setRgbaColor($rgba)
+    private function _setRgbaColor($rgba, $hsl = null)
     {
-        $rgb = [$rgba['r'], $rgba['g'], $rgba['b']];
+        $rgb = ['r' => $rgba['r'], 'g' => $rgba['g'], 'b' => $rgba['b']];
 
-        $this->_hsl = self::rgbToHsl($rgb);
+        if ($hsl) {
+            if (isset($hsl['a'])) {
+                unset($hsl['a']);
+            }
+            $this->_hsl = self::rgbToHsl($rgb);
+        } else {
+            $this->_hsl = self::rgbToHsl($rgb);
+        }
         $this->_hex = self::rgbToHex($rgb);
         $this->_rgb = $rgb;
         $this->_alpha = isset($rgba['a']) ? $rgba['a'] : null;
@@ -1176,6 +1204,8 @@ class AceColors
                     } else {
                         $value = (float)$value / 255;
                     }
+                } else {
+                    $value = ($key === 'a' && null === $value) ? null : (float)$value;
                 }
                 $result[$key] = $value;
             }
@@ -1230,7 +1260,7 @@ class AceColors
                         $value = (float)$value / 100;
                     }
                 } else {
-                    $value = (float)$value;
+                    $value = ($key === 'a' && null === $value) ? null : (float)$value;
                 }
                 $result[$key] = $value;
             }
@@ -1386,20 +1416,20 @@ class AceColors
             case 'h':
                 $hsl = $this->getHsla();
                 $hsl['h'] = self::_checkValue($value, 360);
-                $this->_setRgbaColor(static::hslToRgba($hsl));
+                $this->_setRgbaColor(static::hslToRgba($hsl), $hsl);
                 break;
             case 'saturation':
             case 's':
                 $hsl = $this->getHsla();
                 $hsl['s'] = self::_checkValue($value, 1);
-                $this->_setRgbaColor(static::hslToRgba($hsl));
+                $this->_setRgbaColor(static::hslToRgba($hsl), $hsl);
                 break;
             case 'lightness':
             case 'light':
             case 'l':
                 $hsl = $this->getHsla();
                 $hsl['l'] = self::_checkValue($value, 1);
-                $this->_setRgbaColor(static::hslToRgba($hsl));
+                $this->_setRgbaColor(static::hslToRgba($hsl), $hsl);
                 break;
             default:
                 static::_error(self::ERROR_NO_PROPERTY);
