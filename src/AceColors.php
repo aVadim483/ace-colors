@@ -1,6 +1,6 @@
 <?php
 /**
- * This file is part of the PhpColor package
+ * This file is part of the AceColors package
  * https://github.com/aVadim483/ace-colors
  *
  * Based on Mexitek/PHPColors by Arlo Carreon <http://arlocarreon.com>
@@ -12,8 +12,6 @@
 namespace avadim\AceColors;
 
 /**
- * A helpers for converting and manipulating colors. You can use and converting to different formats and finding color harmonies
- *
  * Correct input HEX-strings are
  *      '#RRGGBB'   - full color without alpha, where RR, GG, BB are 2-digits hexadecimal numbers, ex. '#ff9966'
  *      '#RGB'      - short color without alpha, where R, G, B are 1-digit hexadecimal numbers, ex. '#f96'
@@ -40,15 +38,6 @@ namespace avadim\AceColors;
  *      ['h' => 120, 's' => '100%', 'l' => '50%']              - the same, with float values as percents
  *      ['h' => 120, s' => '100%', 'l' => '50%', 'a' => '30%'] - the same
  * You can use uppercase indexes, ex. ['H' => 120, 'S' => 1, 'L' => 0.5]
- *
- * @property $hex
- * @property $red
- * @property $green
- * @property $blue
- * @property $alpha
- * @property $hue
- * @property $saturation
- * @property $lightness
  */
 class AceColors
 {
@@ -67,6 +56,7 @@ class AceColors
     private $_hsl;
     private $_rgb;
     private $_alpha;
+    private $_saturation;
 
     protected static $errors = [];
 
@@ -76,11 +66,16 @@ class AceColors
      * and black (for darken) or white (for lighten)
      */
     const DEFAULT_ADJUST = 10;
+    /**
+     * @var float|mixed|string|null
+     */
 
     /**
      * AceColors constructor
      *
      * @param string|array $input
+     *
+     * @throws \RuntimeException
      */
     public function __construct($input = null)
     {
@@ -103,11 +98,11 @@ class AceColors
             } elseif ($color = self::_checkHsl($input, true)) {
                 $this->setHsl($color);
             } else {
-                static::_error(self::ERROR_COLOR_FORMAT);
+                static::_error(self::ERROR_COLOR_FORMAT, $input);
             }
         }
         if (empty($color)) {
-            static::_error(self::ERROR_COLOR_FORMAT);
+            static::_error(self::ERROR_COLOR_FORMAT, $input);
         }
     }
 
@@ -131,13 +126,23 @@ class AceColors
 
     /**
      * @param $code
+     * @param $param
+     *
+     * @throws \RuntimeException
      */
-    protected static function _error($code)
+    protected static function _error($code, $param = null)
     {
-        if (!empty(self::$errors[$code])) {
-            throw new \RuntimeException(self::$errors[$code]);
+        if ($param) {
+            if (is_scalar($param)) {
+                $param = ' -- ' . $param;
+            } else {
+                $param = print_r($param, true);
+            }
         }
-        throw new \RuntimeException('Unknown error');
+        if (!empty(self::$errors[$code])) {
+            throw new \RuntimeException(self::$errors[$code] . $param);
+        }
+        throw new \RuntimeException('Unknown error' . $param);
     }
 
 
@@ -252,13 +257,22 @@ class AceColors
     }
 
     /**
+     * Set value of alpha channel
+     *
      * @param $value
      *
      * @return $this
      */
     public function setAlpha($value)
     {
-        $this->alpha = $value;
+        if (is_string($value) && substr($value, -1) === '%') {
+            $value = (float)$value / 100;
+        } elseif ($value > 1 && $value <= 100) {
+            $value /= 100;
+        } else {
+            $value = (float)$value;
+        }
+        $this->_alpha = $value;
 
         return $this;
     }
@@ -282,7 +296,10 @@ class AceColors
      */
     public function setSaturation($value)
     {
-        $this->saturation = $value;
+        if ($value > 1 && $value <= 100) {
+            $value /= 100;
+        }
+        $this->_saturation = $value;
 
         return $this;
     }
@@ -294,6 +311,9 @@ class AceColors
      */
     public function setLightness($value)
     {
+        if ($value > 1 && $value <= 100) {
+            $value /= 100;
+        }
         $this->lightness = $value;
 
         return $this;
@@ -322,8 +342,11 @@ class AceColors
     public function getHexa()
     {
         $hexa = $this->getHex();
-        $hexa .= (null === $this->_alpha) ? 'ff' : dechex($this->_alpha * 255);
-
+        if (null === $this->_alpha) {
+            $hexa .= 'ff';
+        } else {
+            $hexa .= str_pad(dechex($this->_alpha * 255), 2, '0', STR_PAD_LEFT);
+        }
         return $hexa;
     }
 
@@ -545,10 +568,9 @@ class AceColors
 
         $L = ($varMax + $varMin) / 2;
 
-        if ($delMax == 0) {
-            $H = 0;
-            $S = 0;
-        } else {
+        $H = 0;
+        $S = 0;
+        if ($delMax > 0) {
             if ($L < 0.5) {
                 $S = $delMax / ($varMax + $varMin);
             } else {
@@ -559,11 +581,11 @@ class AceColors
             $delG = ((($varMax - $G) / 6) + ($delMax / 2)) / $delMax;
             $delB = ((($varMax - $B) / 6) + ($delMax / 2)) / $delMax;
 
-            if ($R == $varMax) {
+            if ($R === $varMax) {
                 $H = $delB - $delG;
-            } elseif ($G == $varMax) {
+            } elseif ($G === $varMax) {
                 $H = (1 / 3) + $delR - $delB;
-            } elseif ($B == $varMax) {
+            } elseif ($B === $varMax) {
                 $H = (2 / 3) + $delG - $delR;
             }
 
@@ -591,7 +613,7 @@ class AceColors
      */
     public static function hslToHex($hsl)
     {
-        return static::rgbToHex(static::hslToRGB($hsl));
+        return static::rgbToHex(static::hslToRgb($hsl));
     }
 
     /**
@@ -621,14 +643,13 @@ class AceColors
         // Make sure it's HSL
         $hsl = self::_checkHsl($hsl);
 
-        list($H, $S, $L) = array($hsl['h'] / 360, $hsl['s'], $hsl['l']);
+        list($H, $S, $L) = [$hsl['h'] / 360, $hsl['s'], $hsl['l']];
 
-        if ($S == 0) {
+        if ((float)$S === 0.0) {
             $r = $L * 255;
             $g = $L * 255;
             $b = $L * 255;
         } else {
-
             if ($L < 0.5) {
                 $var_2 = $L * (1 + $S);
             } else {
@@ -721,9 +742,7 @@ class AceColors
      */
     public function cloneColor()
     {
-        $color = clone $this;
-
-        return $color;
+        return clone $this;
     }
 
     /**
@@ -743,15 +762,15 @@ class AceColors
      */
     public function makeComplimentary()
     {
-        $color = $this->cloneColor();
-
         return $this->cloneColor()->complementary();
     }
 
     /**
      * Make new color object with darker color
      *
-     * @return string
+     * @param int $amount
+     *
+     * @return $this
      */
     public function makeDarker($amount = self::DEFAULT_ADJUST)
     {
@@ -792,53 +811,35 @@ class AceColors
         $G = ($g <= 0.03928) ? ($g / 12.92) : (($g + 0.055)/1.055) ^ 2.4;
         $B = ($b <= 0.03928) ? ($b / 12.92) : (($b + 0.055)/1.055) ^ 2.4;
 
-        $L = 0.2126 * $R + 0.7152 * $G + 0.0722 * $B;
-
-        return $L;
+        return 0.2126 * $R + 0.7152 * $G + 0.0722 * $B;
     }
 
     /**
      * Returns whether or not given color is considered "light"
      *
-     * @param string|bool $color
+     * @param mixed $color
      *
      * @param int $lighterThan
      *
      * @return bool
      */
-    public function isLight($color = false, $lighterThan = 130)
+    public function isLight($color = null, $lighterThan = 130)
     {
-        // Get current color
-        $color = ($color) ? $color : $this->_hex;
-
-        // Calculate straight from rbg
-        $r = hexdec($color[0] . $color[1]);
-        $g = hexdec($color[2] . $color[3]);
-        $b = hexdec($color[4] . $color[5]);
-
-        return (($r * 299 + $g * 587 + $b * 114) / 1000 > $lighterThan);
+        return $this->_compareLevel($color, $lighterThan) > 0;
     }
 
     /**
      * Returns whether or not a given color is considered "dark"
      *
-     * @param string|bool $color
+     * @param mixed $color
      *
      * @param int $darkerThan
      *
      * @return bool
      */
-    public function isDark($color = false, $darkerThan = 130)
+    public function isDark($color = null, $darkerThan = 130)
     {
-        // Get current color
-        $color = ($color) ? $color : $this->_hex;
-
-        // Calculate straight from rbg
-        $r = hexdec($color[0] . $color[1]);
-        $g = hexdec($color[2] . $color[3]);
-        $b = hexdec($color[4] . $color[5]);
-
-        return (($r * 299 + $g * 587 + $b * 114) / 1000 <= $darkerThan);
+        return $this->_compareLevel($color, $darkerThan) <= 0;
     }
 
     /**
@@ -853,7 +854,7 @@ class AceColors
     {
         // Lighten
         $lighterHSL = $this->_lighten($this->getHsl(), $amount);
-        $lighterHSL['a'] = $this->alpha;
+        $lighterHSL['a'] = $this->_alpha;
 
         return $this->setHsl($lighterHSL);
     }
@@ -870,9 +871,45 @@ class AceColors
     {
         // Darken
         $darkerHSL = $this->_darken($this->getHsl(), $amount);
-        $darkerHSL['a'] = $this->alpha;
+        $darkerHSL['a'] = $this->_alpha;
 
         return $this->setHsl($darkerHSL);
+    }
+
+    /**
+     * @param $value
+     *
+     * @return $this
+     */
+    public function saturate($value)
+    {
+        if (is_numeric($value) && abs($value) > 1 && abs($value) <= 100) {
+            $value /= 100 * (($value < 0) ? -1 : 1);
+        } else {
+            $value = self::_checkValue($value, 1);
+        }
+        $saturation = $this->_saturation + $value;
+        if ($saturation < 0) {
+            $this->_saturation = 0;
+        } elseif ($saturation > 1) {
+            $this->_saturation = 1;
+        } else {
+            $this->_saturation = $saturation;
+        }
+        return $this;
+    }
+
+    /**
+     * @param $value
+     *
+     * @return $this
+     */
+    public function desaturate($value)
+    {
+        if (!is_numeric($value)) {
+            $value = -self::_checkValue($value, 1);
+        }
+        return $this->saturate($value);
     }
 
     /**
@@ -888,7 +925,7 @@ class AceColors
 
         // Adjust Hue 180 degrees
         $hsla['h'] += ($hsla['h'] > 180) ? -180 : 180;
-        $hsla['a'] = $this->alpha;
+        $hsla['a'] = $this->_alpha;
 
         return $this->setHsl($hsla);
     }
@@ -903,7 +940,7 @@ class AceColors
             'r' => 255 - $rgb['r'],
             'g' => 255 - $rgb['g'],
             'b' => 255 - $rgb['b'],
-            'a' => $this->alpha,
+            'a' => $this->_alpha,
         ];
 
         $this->_setRgbaColor($rgba);
@@ -923,7 +960,7 @@ class AceColors
     {
         $newColor = new static($color2);
         $mixed = $this->_mix($this->getRgb(), $newColor->getRgb(), $amount);
-        $mixed['a'] = $this->alpha;
+        $mixed['a'] = $this->_alpha;
 
         $this->_setRgbaColor($mixed);
 
@@ -967,7 +1004,7 @@ class AceColors
         // Get the recommended gradient
         $g = $this->getGradientArray($amount);
 
-        $css = "";
+        $css = '';
         /* fallback/image non-cover color */
         $css .= "{$prefix}background-color: #" . $this->_hex . ";{$suffix}";
 
@@ -999,10 +1036,33 @@ class AceColors
         return $css;
     }
 
-    // ===========================
-    // = Private Functions Below =
-    // ===========================
 
+    /* ***************************************
+     * Private methods
+     */
+
+    private function _compareLevel($color, $compareLevel)
+    {
+        if ($color) {
+            $color = new self($color);
+            $color = $color->$this->getHex();
+        } else {
+            // Get current color
+            $color = $this->_hex;
+        }
+
+        // Calculate straight from rbg
+        $r = hexdec($color[0] . $color[1]);
+        $g = hexdec($color[2] . $color[3]);
+        $b = hexdec($color[4] . $color[5]);
+
+        $value = ($r * 299 + $g * 587 + $b * 114) / 1000;
+
+        if ($value === (float)$compareLevel) {
+            return 0;
+        }
+        return ($value > $compareLevel) ? 1 : -1;
+    }
 
     /**
      * Darkens a given HSL array
@@ -1020,7 +1080,7 @@ class AceColors
             $hsl['l'] = ($hsl['l'] < 0) ? 0 : $hsl['l'] / 100;
         } else {
             // We need to find out how much to darken
-            $hsl['l'] = $hsl['l'] / 2;
+            $hsl['l'] /= 2;
         }
 
         return $hsl;
@@ -1135,10 +1195,10 @@ class AceColors
         $len = strlen($hex);
         // Strip # sign is present
         if (($len === 4 || $len === 5 || $len === 7 || $len === 9) && $hex[0] === '#') {
-            $hex = substr($hex, 1);
+            $hex = '' . substr($hex, 1);
             $len--;
         }
-        if (strspn($hex, '01234567890abcdef') === $len) {
+        if (strspn(strtolower($hex), '01234567890abcdef') === $len) {
             if ($len === 3) {
                 return ['r' => hexdec($hex[0] . $hex[0]), 'g' => hexdec($hex[1] . $hex[1]), 'b' => hexdec($hex[2] . $hex[2]), 'a' => null];
             }
@@ -1247,7 +1307,7 @@ class AceColors
         }
         if (!isset($hsl['h'], $hsl['s'], $hsl['l']) && !$ignoreError) {
             self::_error(self::ERROR_HSL_FORMAT);
-            return null;
+            return [];
         }
         $result = [];
         foreach($hsl as $key => $value) {
@@ -1255,10 +1315,9 @@ class AceColors
                 if ($value && is_string($value) && substr($value, -1) === '%') {
                     if ($key === 'h') {
                         self::_error(self::ERROR_HSL_FORMAT);
-                        return null;
-                    } else {
-                        $value = (float)$value / 100;
+                        return [];
                     }
+                    $value = (float)$value / 100;
                 } else {
                     $value = ($key === 'a' && null === $value) ? null : (float)$value;
                 }
@@ -1272,14 +1331,15 @@ class AceColors
      * @param string $rgbStr
      * @param bool   $ignoreError
      *
-     * @return null
+     * @return array|null
      */
     private static function _checkRgbStr($rgbStr, $ignoreError = false)
     {
-        if (preg_match('/^(rgba?)\((\d+\%?),(\d+\%?),(\d+\%?)(,([\d\.]+\%?))?\)$/', $rgbStr, $m)) {
+        if (preg_match('/^(rgba?)\((\d+%?),(\d+%?),(\d+%?)(,([\d\.]+%?))?\)$/', $rgbStr, $m)) {
             if ($m[1] === 'rgb' && isset($m[2], $m[3], $m[4])) {
                 return [$m[2], $m[3], $m[4]];
-            } elseif ($m[1] === 'rgba' && isset($m[2], $m[3], $m[4], $m[6])) {
+            }
+            if ($m[1] === 'rgba' && isset($m[2], $m[3], $m[4], $m[6])) {
                 return [$m[2], $m[3], $m[4], $m[6]];
             }
         }
@@ -1294,14 +1354,15 @@ class AceColors
      * @param string $hslStr
      * @param bool   $ignoreError
      *
-     * @return null
+     * @return array|null
      */
     private static function _checkHslStr($hslStr, $ignoreError = false)
     {
-        if (preg_match('/^(hsla?)\((\d+),([\d\.]+\%?),([\d\.]+\%?)(,([\d\.]+\%?))?\)$/', $hslStr, $m)) {
+        if (preg_match('/^(hsla?)\((\d+),([\d\.]+%?),([\d\.]+%?)(,([\d\.]+%?))?\)$/', $hslStr, $m)) {
             if ($m[1] === 'hsl' && isset($m[2], $m[3], $m[4])) {
                 return [$m[2], $m[3], $m[4]];
-            } elseif ($m[1] === 'hsla' && isset($m[2], $m[3], $m[4], $m[6])) {
+            }
+            if ($m[1] === 'hsla' && isset($m[2], $m[3], $m[4], $m[6])) {
                 return [$m[2], $m[3], $m[4], $m[6]];
             }
         }
@@ -1338,7 +1399,7 @@ class AceColors
      */
     public function __toString()
     {
-        return "#" . $this->getHex();
+        return '#' . $this->getHex();
     }
 
     /**
