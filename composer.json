@@ -1,8 +1,8 @@
 {
     "name": "avadim/ace-colors",
     "description": "A helpers for converting and manipulating colors. You can use and converting to different formats",
-    "keywords": ["calculator","expression","math","parser","lexer"],
-    "homepage": "https://github.com/aVadim483/ace-calculator",
+    "keywords": ["colors", "converter", "rgb", "hsl", "hex", "saturation", "hue"],
+    "homepage": "https://github.com/aVadim483/ace-colors",
     "license": "MIT",
     "authors": [
         {
@@ -10,13 +10,16 @@
             "email": "vshemarov@gmail.com"
         }
     ],
-    "require": {
-        "php": ">=5.6"
-    },
-    "require-dev": {
-        "phpunit/phpunit": "~5.0"
-    },
     "autoload": {
         "psr-4": {"avadim\\AceColors\\": "src/"}
+    },
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "~9.0"
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit tests"
     }
 }

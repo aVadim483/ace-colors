@@ -11,6 +11,15 @@ All instructions to install here: https://packagist.org/packages/avadim/ace-clac
 ## Sample usage
 
 ```php
+// create black color
+$color = new avadim\AceColors\AceColors();
+
+// create red color
+$color = new avadim\AceColors\AceColors('ff0000');
+
+// create red color (short notation)
+$color = new avadim\AceColors\AceColors('f00');
+
 // create the color
 $color = new avadim\AceColors\AceColors('#afd01');
 
@@ -76,16 +85,16 @@ You can use uppercase indexes, ex. ['H' => 120, 'S' => 1, 'L' => 0.5]
 
 ### Get color in different formats
 
-* getHex() - '001122'
-* getHexa() - '001122aa'
-* getRgb() - RGB-array like ['r' => 255, 'g' => 0, 'b' => 51]
-* getRgba() - RGBA-array like ['h' => 120, 's' => 1, 'l' => 0.5, 'a' => 0.3]
-* getRgbStr() - 'rgb(...)'
-* getRgbaStr() - 'rgba(...)'
-* getHsl() - ['h' => 120, 's' => 1, 'l' => 0.5]
-* getHsla() - ['h' => 120, 's' => 1, 'l' => 0.5, 'a' => 0.3]
-* getHslStr() - 'hsl(...)'
-* getHslaStr() - 'hsla(...)'
+* getHex()
+* getHexa()
+* getRgb()
+* getRgba()
+* getRgbStr()
+* getRgbaStr()
+* getHsl()
+* getHsla()
+* getHslStr()
+* getHslaStr()
 
 ### Manipulations
 
