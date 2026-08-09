@@ -1,0 +1,105 @@
+name: tests
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # composer.json requires php >=7.4, so every supported version is covered
+        php: [ '7.4', '8.0', '8.1', '8.2', '8.3', '8.4' ]
+        experimental: [ false ]
+        include:
+          # PHPUnit 9 has no official 8.5 support yet, so it must not block the build
+          - php: '8.5'
+            experimental: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, json, libxml, mbstring, tokenizer, xml, xmlwriter
+          coverage: none
+          # deprecation notices must be visible in the log, see the "quality" job
+          ini-values: error_reporting=E_ALL, display_errors=On
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+      - name: Determine composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ matrix.php }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-php${{ matrix.php }}-
+
+      # composer.lock is gitignored for a library, so dependencies are always resolved fresh
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-progress --no-interaction
+
+      - name: Run tests
+        run: vendor/bin/phpunit --colors=always
+
+  quality:
+    name: Deprecations and coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, json, libxml, mbstring, tokenizer, xml, xmlwriter
+          coverage: pcov
+          ini-values: error_reporting=E_ALL, display_errors=On
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-progress --no-interaction
+
+      # The library used to emit dozens of "Implicit conversion from float" notices,
+      # this guards against that coming back
+      - name: Fail on PHP deprecations
+        run: |
+          set -o pipefail
+          php -d error_reporting=E_ALL vendor/bin/phpunit --colors=never 2>&1 | tee run.log
+          if grep -qE '^(PHP )?Deprecated:' run.log; then
+            echo "::error::PHP deprecation notices detected"
+            grep -E '^(PHP )?Deprecated:' run.log | sort -u
+            exit 1
+          fi
+
+      - name: Coverage
+        run: vendor/bin/phpunit --coverage-text --colors=never | tee coverage.txt
+
+      - name: Publish coverage summary
+        if: always()
+        run: |
+          {
+            echo '### Coverage'
+            echo '```'
+            grep -E 'Classes:|Methods:|Lines:' coverage.txt | head -3 || echo 'no coverage data'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

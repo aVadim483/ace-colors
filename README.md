@@ -1,4 +1,7 @@
 # AceColors
+
+[![tests](https://github.com/aVadim483/ace-colors/actions/workflows/tests.yml/badge.svg)](https://github.com/aVadim483/ace-colors/actions/workflows/tests.yml)
+
 A set of methods for converting and manipulating colors. 
 You can use and converting to different formats
 
