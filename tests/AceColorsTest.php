@@ -365,25 +365,28 @@ class AceColorsTest extends TestCase
      */
     public function testStaticHslConversions()
     {
-        $hsl = ['h' => 210, 's' => 0.6, 'l' => 0.5];
+        // hsl(210, 50%, 40%) converts to exactly rgb(51, 102, 153) with no fractional
+        // channels. Values landing on x.5 must be avoided here: PHP below 8.4 pre-rounded
+        // inside round(), so 127.49999999999994 became 128, while 8.4 returns 127
+        $hsl = ['h' => 210, 's' => 0.5, 'l' => 0.4];
         $hsla = $hsl + ['a' => 0.5];
 
-        $this->assertEquals('337fcc', AceColors::hslToHex($hsl));
-        $this->assertEquals('337fcc', AceColors::hslaToHex($hsla), 'hslaToHex() drops the alpha');
-        $this->assertEquals('337fcc7f', AceColors::hslaToHexa($hsla));
+        $this->assertEquals('336699', AceColors::hslToHex($hsl));
+        $this->assertEquals('336699', AceColors::hslaToHex($hsla), 'hslaToHex() drops the alpha');
+        $this->assertEquals('3366997f', AceColors::hslaToHexa($hsla));
         $this->assertEquals('3388cc', AceColors::rgbaToHex(['r' => 51, 'g' => 136, 'b' => 204, 'a' => 0.5]),
             'rgbaToHex() drops the alpha, rgbaToHexa() keeps it');
 
-        $this->assertEquals('hsl(210,60%,50%)', AceColors::hslToStr($hsl));
-        $this->assertEquals('hsla(210,60%,50%,0.5)', AceColors::hslaToStr($hsla));
+        $this->assertEquals('hsl(210,50%,40%)', AceColors::hslToStr($hsl));
+        $this->assertEquals('hsla(210,50%,40%,0.5)', AceColors::hslaToStr($hsla));
         $this->assertEquals('rgba(51,136,204,0.5)', AceColors::rgbaToStr(['r' => 51, 'g' => 136, 'b' => 204, 'a' => 0.5]));
 
         // hexToHsl() round-trips back to the same color
-        $back = AceColors::hexToHsl('#337fcc');
+        $back = AceColors::hexToHsl('#336699');
         $this->assertEquals(210, round($back['h']));
-        $this->assertEquals(0.6, round($back['s'], 2));
-        $this->assertEquals(0.5, round($back['l'], 2));
-        $this->assertEquals('337fcc', AceColors::hslToHex($back));
+        $this->assertEquals(0.5, round($back['s'], 2));
+        $this->assertEquals(0.4, round($back['l'], 2));
+        $this->assertEquals('336699', AceColors::hslToHex($back));
 
         // hslToRgba() keeps the alpha, hslToRgb() strips the key entirely
         $this->assertEquals(0.5, AceColors::hslToRgba($hsla)['a']);
@@ -435,7 +438,7 @@ class AceColorsTest extends TestCase
     public function testKeyCaseOutput()
     {
         $rgb = ['r' => 51, 'g' => 136, 'b' => 204];
-        $hsl = ['h' => 210, 's' => 0.6, 'l' => 0.5];
+        $hsl = ['h' => 210, 's' => 0.5, 'l' => 0.4];
         $hsla = $hsl + ['a' => 0.5];
 
         $collect = static function () use ($rgb, $hsl, $hsla) {
@@ -517,8 +520,8 @@ class AceColorsTest extends TestCase
                 'setRgb'     => (new AceColors())->setRgb(['r' => 255, 'g' => 0, 'b' => 51])->getHex(),
                 'setHex'     => (new AceColors())->setHex('#00ff00')->getHex(),
                 'hexa'       => (new AceColors('3388cc80'))->getHexa(),
-                'hslToHex'   => AceColors::hslToHex(['h' => 210, 's' => 0.6, 'l' => 0.5]),
-                'hslaToHexa' => AceColors::hslaToHexa(['h' => 210, 's' => 0.6, 'l' => 0.5, 'a' => 0.5]),
+                'hslToHex'   => AceColors::hslToHex(['h' => 210, 's' => 0.5, 'l' => 0.4]),
+                'hslaToHexa' => AceColors::hslaToHexa(['h' => 210, 's' => 0.5, 'l' => 0.4, 'a' => 0.5]),
                 'rgbToHex'   => AceColors::rgbToHex(['r' => 51, 'g' => 136, 'b' => 204]),
                 'isLight'    => (new AceColors('ffffff'))->isLight(),
             ];
@@ -543,8 +546,8 @@ class AceColorsTest extends TestCase
                 (new AceColors('3388cc'))->getHslStr(),
                 (new AceColors('3388cc80'))->getHslaStr(),
                 (new AceColors('#3388cc'))->getHex(),
-                AceColors::hslToStr(['h' => 210, 's' => 0.6, 'l' => 0.5]),
-                AceColors::hslaToStr(['h' => 210, 's' => 0.6, 'l' => 0.5, 'a' => 0.5]),
+                AceColors::hslToStr(['h' => 210, 's' => 0.5, 'l' => 0.4]),
+                AceColors::hslaToStr(['h' => 210, 's' => 0.5, 'l' => 0.4, 'a' => 0.5]),
                 AceColors::rgbToStr(['r' => 51, 'g' => 136, 'b' => 204]),
                 AceColors::rgbaToStr(['r' => 51, 'g' => 136, 'b' => 204, 'a' => 0.5]),
             ];
