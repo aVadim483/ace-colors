@@ -62,16 +62,26 @@ class AceColors
         self::ERROR_HSLA_FORMAT     => 'Wrong format of HSLA array (required ["h"=>H,"s"=>S,"l"=>L,"a"=>A]',
         self::ERROR_RGB_STR_FORMAT  => 'Wrong format of RGB_STR string (required "rgb(R,G,B)")',
         self::ERROR_RGBA_STR_FORMAT => 'Wrong format of RGBA_STR string (required "rgba(R,G,B,A)")',
+        self::ERROR_NO_PROPERTY     => 'Unknown color property',
     ];
 
     private string $_hex;
     private array $_hsl;
     private array $_rgb;
     private ?float $_alpha;
-    private ?float $_saturation;
 
     /** @var string|null prefix for hex(a) results */
     private ?string $_sharp = null;
+
+    /**
+     * Key case of the returned color arrays, CASE_LOWER or CASE_UPPER
+     *
+     * Inside the class the keys are ALWAYS lowercase, this setting is applied
+     * by _out() at the very moment a public method returns an array
+     *
+     * @var int
+     */
+    private static int $keyCase = CASE_LOWER;
 
     protected static array $errors = [];
 
@@ -138,13 +148,16 @@ class AceColors
      */
     protected static function _error($code, $param = null)
     {
-        if ($param) {
-            if (is_scalar($param)) {
-                $param = ' -- ' . $param;
-            }
-            else {
-                $param = print_r($param, true);
-            }
+        if (null === $param) {
+            $param = '';
+        }
+        elseif (is_scalar($param)) {
+            $param = ' -- ' . $param;
+        }
+        else {
+            // an empty array is falsy, so it must be handled here too, otherwise
+            // it would reach the string concatenation below as an array
+            $param = ' -- ' . print_r($param, true);
         }
         if (!empty(self::ERRORS[$code])) {
             throw new \RuntimeException(self::ERRORS[$code] . $param);
@@ -162,6 +175,35 @@ class AceColors
         $this->_sharp = $sharp ? '#' : '';
 
         return $this;
+    }
+
+    /**
+     * Sets the key case of all returned color arrays
+     *
+     * Affects the arrays of color channels only: hexToRgb(), hexToRgba(), hexToHsl(),
+     * rgbToHsl(), hslToRgb(), hslToRgba(), hslaToRgba(), getRgb(), getRgba(), getHsl(),
+     * getHslA(). Methods returning strings are not affected, neither is
+     * getGradientArray() whose 'light'/'dark' keys are roles, not color channels
+     *
+     * The setting is global for the process, restore it with setKeyCase(CASE_LOWER)
+     *
+     * @param int $case CASE_LOWER (default) or CASE_UPPER
+     *
+     * @return void
+     */
+    public static function setKeyCase(int $case): void
+    {
+        self::$keyCase = ($case === CASE_UPPER) ? CASE_UPPER : CASE_LOWER;
+    }
+
+    /**
+     * Returns the current key case setting
+     *
+     * @return int
+     */
+    public static function getKeyCase(): int
+    {
+        return self::$keyCase;
     }
 
     /* ***************************************
@@ -225,10 +267,10 @@ class AceColors
         $hsl = self::_checkHsl($hsl);
         if ($hsl) {
             if (isset($hsl['a'])) {
-                $this->_setRgbaColor(static::hslaToRgba($hsl), $hsl);
+                $this->_setRgbaColor(static::_hslToRgba($hsl), $hsl);
             }
             else {
-                $this->_setRgbaColor(static::hslToRgb($hsl), $hsl);
+                $this->_setRgbaColor(static::_hslToRgb($hsl), $hsl);
             }
         }
         return $this;
@@ -246,7 +288,7 @@ class AceColors
     public function setRed($value): AceColors
     {
         $this->__set('red', $value);
-        $this->_setRgbaColor($this->getRgba());
+        $this->_setRgbaColor($this->_rgba());
 
         return $this;
     }
@@ -259,7 +301,7 @@ class AceColors
     public function setGreen($value): AceColors
     {
         $this->__set('green', $value);
-        $this->_setRgbaColor($this->getRgba());
+        $this->_setRgbaColor($this->_rgba());
 
         return $this;
     }
@@ -272,7 +314,7 @@ class AceColors
     public function setBlue($value): AceColors
     {
         $this->__set('blue', $value);
-        $this->_setRgbaColor($this->getRgba());
+        $this->_setRgbaColor($this->_rgba());
 
         return $this;
     }
@@ -296,7 +338,7 @@ class AceColors
             $value = (float)$value;
         }
         $this->_alpha = $value;
-        $this->_setRgbaColor($this->getRgba());
+        $this->_setRgbaColor($this->_rgba());
 
         return $this;
     }
@@ -381,7 +423,7 @@ class AceColors
      */
     public function getRgb(): array
     {
-        return $this->_rgb;
+        return static::_out($this->_rgb);
     }
 
     /**
@@ -391,7 +433,17 @@ class AceColors
      */
     public function getRgba(): array
     {
-        $rgba = $this->getRgb();
+        return static::_out($this->_rgba());
+    }
+
+    /**
+     * Current color as an RGBA-array, always in lowercase keys, for internal use
+     *
+     * @return array
+     */
+    protected function _rgba(): array
+    {
+        $rgba = $this->_rgb;
         $rgba['a'] = (null === $this->_alpha) ? 1.0 : $this->_alpha;
 
         return $rgba;
@@ -404,7 +456,7 @@ class AceColors
      */
     public function getRgbStr(): string
     {
-        return self::rgbToStr($this->getRgb());
+        return static::rgbToStr($this->_rgb);
     }
 
     /**
@@ -414,7 +466,7 @@ class AceColors
      */
     public function getRgbaStr(): string
     {
-        return self::rgbaToStr($this->getRgba());
+        return static::rgbaToStr($this->_rgba());
     }
 
     /**
@@ -424,7 +476,7 @@ class AceColors
      */
     public function getHsl(): array
     {
-        return $this->_hsl;
+        return static::_out($this->_hsl);
     }
 
     /**
@@ -434,7 +486,17 @@ class AceColors
      */
     public function getHslA(): array
     {
-        $hsla = $this->getHsl();
+        return static::_out($this->_hsla());
+    }
+
+    /**
+     * Current color as an HSLA-array, always in lowercase keys, for internal use
+     *
+     * @return array
+     */
+    protected function _hsla(): array
+    {
+        $hsla = $this->_hsl;
         $hsla['a'] = (null === $this->_alpha) ? 1.0 : $this->_alpha;
 
         return $hsla;
@@ -447,7 +509,7 @@ class AceColors
      */
     public function getHslStr(): string
     {
-        return static::hslToStr($this->getHsl());
+        return static::hslToStr($this->_hsl);
     }
 
     /**
@@ -457,7 +519,7 @@ class AceColors
      */
     public function getHslaStr(): string
     {
-        return static::hslaToStr($this->getHslA());
+        return static::hslaToStr($this->_hsla());
     }
 
 
@@ -468,16 +530,36 @@ class AceColors
     /**
      * Given a HEX string returns a RGB array equivalent
      *
+     * The alpha channel is dropped, use hexToRgba() to keep it.
+     * Throws a RuntimeException on a malformed string
+     *
      * @param string $color
      *
      * @return array RGB associative array
      */
-    public static function hexToRgb(string $color): ?array
+    public static function hexToRgb(string $color): array
     {
         // Sanity check
-        return self::_checkHex($color);
+        $rgb = self::_checkHex($color);
+        unset($rgb['a']);
+
+        return static::_out($rgb);
     }
 
+    /**
+     * Given a HEX(A) string returns a RGBA array equivalent
+     *
+     * The alpha is null when the input string carries no alpha channel
+     *
+     * @param string $color
+     *
+     * @return array RGBA associative array
+     */
+    public static function hexToRgba(string $color): array
+    {
+        // Sanity check
+        return static::_out(self::_checkHex($color));
+    }
 
     /**
      * Given a HEX string returns a HSL array equivalent
@@ -491,7 +573,7 @@ class AceColors
         // Sanity check
         $rgbColor = self::_checkHex($color);
 
-        return static::rgbToHsl($rgbColor);
+        return static::_out(static::_rgbToHsl($rgbColor));
     }
 
     /**
@@ -506,24 +588,31 @@ class AceColors
     {
         $color = self::_checkRgb($rgb);
 
-        // Convert to hex. Make sure we get 2 digits for decimals
-        $hr = ($color['r'] < 16) ? '0' . dechex($color['r']) : dechex($color['r']);
-        $hg = ($color['g'] < 16) ? '0' . dechex($color['g']) : dechex($color['g']);
-        $hb = ($color['b'] < 16) ? '0' . dechex($color['b']) : dechex($color['b']);
+        // Convert to hex. Make sure we get 2 digits for decimals.
+        // The channels are floats, the cast is explicit to avoid an implicit-conversion
+        // deprecation on PHP 8.1+. Note it truncates, as dechex() did on its own before
+        $r = (int)$color['r'];
+        $g = (int)$color['g'];
+        $b = (int)$color['b'];
+
+        $hr = ($r < 16) ? '0' . dechex($r) : dechex($r);
+        $hg = ($g < 16) ? '0' . dechex($g) : dechex($g);
+        $hb = ($b < 16) ? '0' . dechex($b) : dechex($b);
         if (!$alpha) {
             return $hr . $hg . $hb;
         }
-        $a = 255 * $color['a'];
+        $a = (int)(255 * $color['a']);
 
         return $hr . $hg . $hb . (($a < 16) ? '0' . dechex($a) : dechex($a));
     }
 
     /**
-     *  Given an RGBA associative array returns the equivalent HEXA string
+     *  Given an RGBA associative array returns the equivalent HEX string
+     *  The alpha channel is dropped, use rgbaToHexa() to keep it
      *
      * @param array $rgba
      *
-     * @return string HEXA string
+     * @return string HEX string RRGGBB
      */
     public static function rgbaToHex(array $rgba): string
     {
@@ -578,6 +667,18 @@ class AceColors
      * @return array HSL associative array
      */
     public static function rgbToHsl(array $color): array
+    {
+        return static::_out(static::_rgbToHsl($color));
+    }
+
+    /**
+     * The same as rgbToHsl() but always in lowercase keys, for internal use
+     *
+     * @param array $color
+     *
+     * @return array HSL associative array
+     */
+    protected static function _rgbToHsl(array $color): array
     {
         $color = self::_checkRgb($color);
 
@@ -641,11 +742,11 @@ class AceColors
      */
     public static function hslToHex(array $hsl): string
     {
-        return static::rgbToHex(static::hslToRgb($hsl));
+        return static::rgbToHex(static::_hslToRgb($hsl));
     }
 
     /**
-     *  Given an HSL associative array returns the equivalent RGBA array
+     *  Given an HSL associative array returns the equivalent RGB array
      *
      * @param array $hsl
      *
@@ -653,7 +754,20 @@ class AceColors
      */
     public static function hslToRgb(array $hsl): array
     {
-        $rgb = static::hslToRgba($hsl);
+        return static::_out(static::_hslToRgb($hsl));
+    }
+
+    /**
+     * The same as hslToRgb() but always in lowercase keys, for internal use
+     *
+     * @param array $hsl
+     *
+     * @return array RGB-array
+     */
+    protected static function _hslToRgb(array $hsl): array
+    {
+        $rgb = static::_hslToRgba($hsl);
+        // the key is dropped while it is still lowercase, before _out() renames it
         unset($rgb['a']);
 
         return $rgb;
@@ -667,6 +781,18 @@ class AceColors
      * @return array RGBA array
      */
     public static function hslToRgba(array $hsl): array
+    {
+        return static::_out(static::_hslToRgba($hsl));
+    }
+
+    /**
+     * The same as hslToRgba() but always in lowercase keys, for internal use
+     *
+     * @param array $hsl
+     *
+     * @return array RGBA array
+     */
+    protected static function _hslToRgba(array $hsl): array
     {
         // Make sure it's HSL
         $hsl = self::_checkHsl($hsl);
@@ -705,7 +831,7 @@ class AceColors
      */
     public static function hslaToRgba(array $hsla): array
     {
-        return static::hslToRgba($hsla);
+        return static::_out(static::_hslToRgba($hsla));
     }
 
     /**
@@ -717,7 +843,7 @@ class AceColors
      */
     public static function hslaToHex(array $hsla): string
     {
-        return static::rgbToHex(static::hslToRgb($hsla));
+        return static::rgbToHex(static::_hslToRgb($hsla));
     }
 
     /**
@@ -729,7 +855,7 @@ class AceColors
      */
     public static function hslaToHexa(array $hsla): string
     {
-        return static::rgbaToHexa(static::hslaToRgba($hsla));
+        return static::rgbaToHexa(static::_hslToRgba($hsla));
     }
 
     /**
@@ -833,7 +959,7 @@ class AceColors
      */
     public function luma(): float
     {
-        $rgb = $this->getRgb();
+        $rgb = $this->_rgb;
         $r = $rgb['r'] / 255;
         $g = $rgb['g'] / 255;
         $b = $rgb['b'] / 255;
@@ -884,7 +1010,7 @@ class AceColors
     public function lighten(int $amount = self::DEFAULT_ADJUST): AceColors
     {
         // Lighten
-        $lighterHSL = $this->_lighten($this->getHsl(), $amount);
+        $lighterHSL = $this->_lighten($this->_hsl, $amount);
         $lighterHSL['a'] = $this->_alpha;
 
         return $this->setHsl($lighterHSL);
@@ -901,50 +1027,45 @@ class AceColors
     public function darken(int $amount = self::DEFAULT_ADJUST): AceColors
     {
         // Darken
-        $darkerHSL = $this->_darken($this->getHsl(), $amount);
+        $darkerHSL = $this->_darken($this->_hsl, $amount);
         $darkerHSL['a'] = $this->_alpha;
 
         return $this->setHsl($darkerHSL);
     }
 
     /**
-     * @param $value
+     * Increases the saturation of the current color
+     *
+     * The amount can be given as percents ('20%', or a number with an absolute value greater than 1)
+     * or as a fraction of the 0.0 - 1.0 range (0.2). A negative amount desaturates
+     *
+     * @param int|float|string $amount
      *
      * @return $this
      */
-    public function saturate($value): AceColors
+    public function saturate($amount = self::DEFAULT_ADJUST): AceColors
     {
-        if (is_numeric($value) && abs($value) > 1 && abs($value) <= 100) {
-            $value /= 100 * (($value < 0) ? -1 : 1);
-        }
-        else {
-            $value = self::_checkValue($value, 1);
-        }
-        $saturation = $this->_saturation + $value;
-        if ($saturation < 0) {
-            $this->_saturation = 0;
-        }
-        elseif ($saturation > 1) {
-            $this->_saturation = 1;
-        }
-        else {
-            $this->_saturation = $saturation;
-        }
+        $hsl = $this->_hsl;
+        $saturation = $hsl['s'] + self::_saturationAmount($amount);
 
-        return $this;
+        $hsl['s'] = max(0.0, min(1.0, $saturation));
+        $hsl['a'] = $this->_alpha;
+
+        return $this->setHsl($hsl);
     }
 
     /**
-     * @param $value
+     * Decreases the saturation of the current color
+     *
+     * Takes the same amount formats as saturate(), a negative amount saturates
+     *
+     * @param int|float|string $amount
      *
      * @return $this
      */
-    public function desaturate($value): AceColors
+    public function desaturate($amount = self::DEFAULT_ADJUST): AceColors
     {
-        if (!is_numeric($value)) {
-            $value = -self::_checkValue($value, 1);
-        }
-        return $this->saturate($value);
+        return $this->saturate(-self::_saturationAmount($amount));
     }
 
     /**
@@ -958,8 +1079,8 @@ class AceColors
         // Get our HSL
         $hsla = $this->_hsl;
 
-        // Adjust Hue 180 degrees
-        $hsla['h'] += ($hsla['h'] > 180) ? -180 : 180;
+        // Adjust Hue 180 degrees, keeping it in the 0 - 360 range
+        $hsla['h'] = fmod($hsla['h'] + 180, 360);
         $hsla['a'] = $this->_alpha;
 
         return $this->setHsl($hsla);
@@ -998,7 +1119,8 @@ class AceColors
         } else {
             $newColor = new static($color2);
         }
-        $mixed = $this->_mix($this->getRgb(), $newColor->getRgb(), $amount);
+        // private is visible between instances of the same class, so no getter is needed
+        $mixed = $this->_mix($this->_rgb, $newColor->_rgb, $amount);
         $mixed['a'] = $this->_alpha;
 
         $this->_setRgbaColor($mixed);
@@ -1015,17 +1137,13 @@ class AceColors
      */
     public function getGradientArray(int $amount = self::DEFAULT_ADJUST): array
     {
-        // Decide which color needs to be made
+        // The missing shade is calculated on a copy, so the current color stays unchanged.
+        // Both values are bare HEX strings without '#', getCssGradient() adds the sign itself
         if ($this->isLight()) {
-            $lightColor = $this->_hex;
-            $darkColor = $this->darken($amount);
-        } else {
-            $lightColor = $this->lighten($amount);
-            $darkColor = $this->_hex;
+            return ['light' => $this->_hex, 'dark' => $this->makeDarker($amount)->_hex];
         }
 
-        // Return our gradient array
-        return ['light' => $lightColor, 'dark' => $darkColor];
+        return ['light' => $this->makeLighter($amount)->_hex, 'dark' => $this->_hex];
     }
 
     /**
@@ -1080,10 +1198,26 @@ class AceColors
      * Private methods
      */
 
+    /**
+     * Applies the configured key case to a color array
+     *
+     * This is the ONE and ONLY place where the key case is applied. Everything inside
+     * the class works with lowercase keys, so no internal code may call a public method
+     * that passes its result through _out()
+     *
+     * @param array $color
+     *
+     * @return array
+     */
+    protected static function _out(array $color): array
+    {
+        return (self::$keyCase === CASE_UPPER) ? array_change_key_case($color, CASE_UPPER) : $color;
+    }
+
     private function _compareLevel($color, $compareLevel): int
     {
         if ($color) {
-            $color = new self($color);
+            $color = new static($color);
             $hex = $color->getHex();
             if ($hex[0] === '#') {
                 $hex = substr($hex, 1);
@@ -1207,16 +1341,16 @@ class AceColors
      * @param array $rgba
      * @param array|null $hsl
      */
-    private function _setRgbaColor(array $rgba, array $hsl = null)
+    private function _setRgbaColor(array $rgba, ?array $hsl = null)
     {
         $rgb = ['r' => $rgba['r'], 'g' => $rgba['g'], 'b' => $rgba['b']];
 
         if ($hsl) {
             $this->_hsl = $hsl;
         } else {
-            $this->_hsl = self::rgbToHsl($rgb);
+            $this->_hsl = static::_rgbToHsl($rgb);
         }
-        $this->_hex = self::rgbToHex($rgb);
+        $this->_hex = static::rgbToHex($rgb);
         $this->_rgb = $rgb;
         $this->_alpha = $rgba['a'] ?? null;
     }
@@ -1252,7 +1386,7 @@ class AceColors
             }
         }
         if (!$ignoreError) {
-            self::_error(self::ERROR_HEX_FORMAT);
+            static::_error(self::ERROR_HEX_FORMAT);
         }
 
         return null;
@@ -1291,7 +1425,7 @@ class AceColors
             if ($ignoreError) {
                 return null;
             }
-            self::_error(self::ERROR_RGB_FORMAT);
+            static::_error(self::ERROR_RGB_FORMAT);
         }
         if (!isset($rgb['a'])) {
             $rgb['a'] = null;
@@ -1347,7 +1481,7 @@ class AceColors
             if ($ignoreError) {
                 return [];
             }
-            self::_error(self::ERROR_HSL_FORMAT);
+            static::_error(self::ERROR_HSL_FORMAT);
         }
         if (!isset($hsl['a'])) {
             $hsl['a'] = null;
@@ -1357,7 +1491,7 @@ class AceColors
             if (in_array($key, ['h', 's', 'l', 'a'], true)) {
                 if ($value && is_string($value) && substr($value, -1) === '%') {
                     if ($key === 'h') {
-                        self::_error(self::ERROR_HSL_FORMAT);
+                        static::_error(self::ERROR_HSL_FORMAT);
                     }
                     $value = (float)$value / 100;
                 }
@@ -1388,7 +1522,7 @@ class AceColors
             }
         }
         if (!$ignoreError) {
-            self::_error(self::ERROR_RGB_STR_FORMAT);
+            static::_error(self::ERROR_RGB_STR_FORMAT);
         }
 
         return null;
@@ -1412,7 +1546,7 @@ class AceColors
             }
         }
         if (!$ignoreError) {
-            self::_error(self::ERROR_RGB_STR_FORMAT);
+            static::_error(self::ERROR_RGB_STR_FORMAT);
         }
 
         return null;
@@ -1435,6 +1569,31 @@ class AceColors
             }
         }
         return $value;
+    }
+
+    /**
+     * Normalizes a saturation amount to a signed fraction of the 0.0 - 1.0 range
+     *
+     * Percent strings ('20%') and numbers with an absolute value greater than 1 are treated
+     * as percents, everything else as a fraction. The sign is always preserved
+     *
+     * @param mixed $amount
+     *
+     * @return float ranged -1.0 .. +1.0
+     */
+    private static function _saturationAmount($amount): float
+    {
+        if (is_string($amount) && substr($amount, -1) === '%') {
+            $amount = (float)$amount / 100;
+        }
+        elseif (is_numeric($amount) && abs($amount) > 1) {
+            $amount = (float)$amount / 100;
+        }
+        else {
+            $amount = (float)static::_checkValue($amount, 1);
+        }
+
+        return max(-1.0, min(1.0, $amount));
     }
 
     /**
@@ -1495,46 +1654,46 @@ class AceColors
         switch (strtolower($name)) {
             case 'red':
             case 'r':
-                $rgba = $this->getRgba();
-                $rgba['r'] = self::_checkValue($value, 255);
+                $rgba = $this->_rgba();
+                $rgba['r'] = static::_checkValue($value, 255);
                 $this->_setRgbaColor($rgba);
                 break;
             case 'green':
             case 'g':
-                $rgba = $this->getRgba();
-                $rgba['g'] = self::_checkValue($value, 255);
+                $rgba = $this->_rgba();
+                $rgba['g'] = static::_checkValue($value, 255);
                 $this->_setRgbaColor($rgba);
                 break;
             case 'blue':
             case 'b':
-                $rgba = $this->getRgba();
-                $rgba['b'] = self::_checkValue($value, 255);
+                $rgba = $this->_rgba();
+                $rgba['b'] = static::_checkValue($value, 255);
                 $this->_setRgbaColor($rgba);
                 break;
             case 'alpha':
             case 'a':
-                $rgba = $this->getRgba();
-                $rgba['a'] = self::_checkValue($value, 1);
+                $rgba = $this->_rgba();
+                $rgba['a'] = static::_checkValue($value, 1);
                 $this->_setRgbaColor($rgba);
                 break;
             case 'hue':
             case 'h':
-                $hsl = $this->getHsla();
-                $hsl['h'] = self::_checkValue($value, 360);
-                $this->_setRgbaColor(static::hslToRgba($hsl), $hsl);
+                $hsl = $this->_hsla();
+                $hsl['h'] = static::_checkValue($value, 360);
+                $this->_setRgbaColor(static::_hslToRgba($hsl), $hsl);
                 break;
             case 'saturation':
             case 's':
-                $hsl = $this->getHsla();
-                $hsl['s'] = self::_checkValue($value, 1);
-                $this->_setRgbaColor(static::hslToRgba($hsl), $hsl);
+                $hsl = $this->_hsla();
+                $hsl['s'] = static::_checkValue($value, 1);
+                $this->_setRgbaColor(static::_hslToRgba($hsl), $hsl);
                 break;
             case 'lightness':
             case 'light':
             case 'l':
-                $hsl = $this->getHsla();
-                $hsl['l'] = self::_checkValue($value, 1);
-                $this->_setRgbaColor(static::hslToRgba($hsl), $hsl);
+                $hsl = $this->_hsla();
+                $hsl['l'] = static::_checkValue($value, 1);
+                $this->_setRgbaColor(static::_hslToRgba($hsl), $hsl);
                 break;
             default:
                 static::_error(self::ERROR_NO_PROPERTY);
